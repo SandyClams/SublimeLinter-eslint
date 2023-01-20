@@ -16,9 +16,8 @@ import os
 import re
 import shutil
 from SublimeLinter.lint import LintMatch, NodeLinter, PermanentError
-
 from SublimeLinter.lint.base_linter.node_linter import read_json_file
-
+from .utils.state import to_milliseconds, LintState
 
 MYPY = False
 if MYPY:
@@ -209,7 +208,18 @@ class ESLint(NodeLinter):
             elif filename and os.path.basename(filename).startswith(BUFFER_FILE_STEM + '.'):
                 filename = 'stdin'
 
-            for match in entry['messages']:
+            lint_results = entry['messages']
+
+            if to_milliseconds(self.settings.get('delay_fatal_errors_by')):
+                view_state = LintState(self)
+
+                if len(lint_results) == 1 and is_fatal_error(lint_results[0]):
+                    view_state.process_fatal_result(lint_results[0])
+                    lint_results = view_state.get_aggregate_results()
+                else:
+                    view_state.store_valid_results(lint_results)
+
+            for match in lint_results:
                 if match['message'].startswith('File ignored'):
                     continue
 
@@ -236,3 +246,6 @@ def _try(getter, otherwise=None, catch=Exception):
         return getter()
     except catch:
         return otherwise
+
+def is_fatal_error(lint_result):
+    return _try(lambda: lint_result['fatal'])
